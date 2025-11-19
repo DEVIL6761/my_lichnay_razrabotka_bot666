@@ -10,6 +10,7 @@ from keyboards import employer_actions_keyboard, job_list_keyboard, edit_job_key
 from moderation import contains_forbidden_content
 from aiogram import Bot
 from config import settings
+from keyboards import skip_contact_keyboard
 
 router = Router()
 
@@ -80,26 +81,46 @@ async def get_salary(message: Message, state: FSMContext):
 
 
 @router.message(CreateJob.work_time)
+@router.message(CreateJob.work_time)
 async def get_work_time(message: Message, state: FSMContext):
     await state.update_data(work_time=message.text)
-    await message.answer("Введите контакт (ID Telegram или номер телефона).")
+    # ✅ Сохраняем tg_id из message.from_user
+    await state.update_data(user_tg_id=message.from_user.id)
+    await message.answer(
+        "Введите контакт (ID Telegram или номер телефона).\n\n"
+        "Если не хотите указывать — нажмите кнопку ниже.",
+        reply_markup=skip_contact_keyboard()
+    )
     await state.set_state(CreateJob.contact)
 
 
 @router.message(CreateJob.contact)
-async def create_job(message: Message, state: FSMContext):
-    await state.update_data(contact=message.text)
-    data = await state.get_data()
-    tg_id = message.from_user.id
+async def create_job_from_message(message: Message, state: FSMContext):
+    contact_input = message.text.strip() if message.text else ""
+    if not contact_input:
+        contact_input = "Не указан"
+    await state.update_data(contact=contact_input)
+    await create_job(message, state)
 
-    # ✅ Проверяем запрещённые слова
+async def create_job(message: Message, state: FSMContext):
+    # ✅ Берём tg_id из FSM
+    data = await state.get_data()
+    tg_id = data.get("user_tg_id")
+
+    if not tg_id:
+        await message.answer("❌ Ошибка: не удалось получить ID пользователя.")
+        await state.clear()
+        return
+
+    contact_input = data.get('contact', 'Не указан')
+
     fields_to_check = [
         data.get('title', ''),
         data.get('description', ''),
         data.get('location', ''),
         data.get('salary', ''),
         data.get('work_time', ''),
-        data.get('contact', '')
+        contact_input
     ]
 
     for field in fields_to_check:
@@ -126,33 +147,25 @@ async def create_job(message: Message, state: FSMContext):
             location=data['location'],
             salary=data['salary'],
             work_time=data['work_time'],
-            contact=data['contact'],
+            contact=contact_input,
             employer_id=user.id
         )
         session.add(job)
         await session.commit()
 
     # ✅ Отправляем вакансию в канал
-    channel_id = "@podrabotka_rabota_minsk"  # Замени на username или ID канала
+    channel_id = "@podrabotka_rabota_minsk"  # Замени на ID или username канала
     bot = Bot(token=settings.bot_token)
 
-    # ✅ Получаем имя пользователя из Telegram
-    telegram_user = message.from_user
-    if not telegram_user:
-        await message.answer(
-            "❌ Не удалось получить информацию о пользователе. "
-            "Публикация вакансии невозможна."
-        )
-        await state.clear()
-        return
-
+    # ✅ Получаем информацию о пользователе из БД (или из Telegram, если нужно)
+    telegram_user = await bot.get_chat(tg_id)
     first_name = telegram_user.first_name
     last_name = telegram_user.last_name
     full_name = f"{first_name} {last_name}" if last_name else first_name
-    user_id = telegram_user.id
 
-    # ✅ Формируем ссылку на профиль (только имя, без ID)
-    user_link = f'<a href="tg://user?id={user_id}">{full_name}</a>'
+    user_link = f'<a href="tg://user?id={tg_id}">{full_name}</a>'
+
+    contact_line = f"📞 Контакт: {job.contact}\n" if job.contact and job.contact != "Не указан" else ""
 
     job_text = (
         f"💼 {job.title}\n\n"
@@ -160,7 +173,8 @@ async def create_job(message: Message, state: FSMContext):
         f"📍 {job.location or 'Не указано'}\n"
         f"💰 {job.salary or 'Не указана'}\n"
         f"🕐 {job.work_time or 'Не указано'}\n"
-        f"📞 Контакт: {job.contact}\n\n"
+        f"{contact_line}"
+        f"\n"
         f"От: {user_link}"
     )
 
@@ -380,6 +394,14 @@ async def delete_job(callback: CallbackQuery):
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu(callback: CallbackQuery):
     await employer_menu(callback.message)
+    await callback.answer()
+
+@router.callback_query(F.data == "skip_contact")
+async def skip_contact(callback: CallbackQuery, state: FSMContext):
+    # ✅ Правильно берём tg_id из callback.from_user
+    tg_id = callback.from_user.id
+    await state.update_data(contact="Не указан", user_tg_id=tg_id)
+    await create_job(callback.message, state)
     await callback.answer()
 
 

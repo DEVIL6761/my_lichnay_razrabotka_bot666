@@ -48,3 +48,9 @@ def edit_job_keyboard(job_id):
         [InlineKeyboardButton(text="🏠 В начало", callback_data="back_to_start")]  # ✅
     ])
     return keyboard
+
+def skip_contact_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⏭️ Пропустить", callback_data="skip_contact")]
+    ])
+    return keyboard
