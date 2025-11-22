@@ -11,6 +11,7 @@ from moderation import contains_forbidden_content
 from aiogram import Bot
 from config import settings
 from keyboards import skip_contact_keyboard
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 router = Router()
 
@@ -210,24 +211,40 @@ async def view_my_jobs(callback: CallbackQuery):
         jobs = await session.scalars(select(Job).where(Job.employer_id == user.id))
         jobs = jobs.all()
 
-        if jobs:
-            text = "Твои вакансии:\n\n"
-            for job in jobs:
-                text += f"📌 Название: {job.title}\n"
-                text += f"📋 Описание: {job.description}\n"
-                text += f"📍 Локация: {job.location or 'Не указана'}\n"
-                text += f"💰 Зарплата: {job.salary or 'Не указана'}\n"
-                text += f"🕐 Время работы: {job.work_time or 'Не указано'}\n"
-                text += f"📞 Контакт: {job.contact or 'Не указан'}\n"
-                text += f"📅 Дата создания: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        if not jobs:
+            await callback.message.answer("У тебя нет вакансий.")
+            await callback.answer()
+            return
 
-            keyboard = job_list_keyboard(jobs)
-        else:
-            text = "У тебя нет вакансий."
-            keyboard = employer_actions_keyboard()
+        # ✅ Отправляем каждую вакансию с кнопками
+        for job in jobs:
+            job_text = (
+                f"💼 <b>{job.title}</b>\n\n"
+                f"📝 {job.description}\n"
+                f"📍 {job.location or 'Не указано'}\n"
+                f"💰 {job.salary or 'Не указана'}\n"
+                f"🕐 {job.work_time or 'Не указано'}\n"
+            )
+            if job.contact and job.contact != "Не указан":
+                job_text += f"📞 Контакт: {job.contact}\n"
+            job_text += f"\n📅 Дата создания: {job.created_at.strftime('%Y-%m-%d %H:%M:%S')}"
 
-    await callback.message.edit_text(text) if callback.message.text else await callback.message.answer(text)
-    await callback.message.edit_reply_markup(reply_markup=keyboard)
+            # ✅ Клавиатура для каждой вакансии
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"edit_job_{job.id}"),
+                    InlineKeyboardButton(text="❌ Удалить", callback_data=f"delete_job_{job.id}")
+                ]
+            ])
+
+            await callback.message.answer(job_text, parse_mode="HTML", reply_markup=keyboard)
+
+        # ✅ Добавляем кнопку "Назад в меню"
+        back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Назад в меню", callback_data="back_to_menu")]
+        ])
+        await callback.message.answer("Выбери действие:", reply_markup=back_keyboard)
+
     await callback.answer()
 
 

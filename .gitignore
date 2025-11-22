@@ -1,8 +1,37 @@
+# Python
 __pycache__/
 *.pyc
-.env
-.venv/
+*.pyo
+*.pyd
+.Python
+env/
 venv/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets & config
+.env
 .env.local
-.env.*
+.env.*.local
+
+# Logs
+*.log
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Database (если есть локальные файлы SQLite — убери, если используешь только PostgreSQL)
+*.db
+*.sqlite
+
+# Проект
+*.egg-info/
+dist/
+build/
