@@ -1,11 +1,15 @@
+# database.py
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from models import Base, User  # ✅ добавь User
+from models import Base
 from config import settings
 
-print(f"DEBUG: database imported Base = {Base}")
-print(f"DEBUG: database imported User = {User}")
-
+# Получаем URL из настроек
 DATABASE_URL = settings.db_url
+
+# ✅ Заменяем схему, если нужно
+if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 print(f"DEBUG: database.DATABASE_URL = {DATABASE_URL}")
 
 engine = create_async_engine(DATABASE_URL)
